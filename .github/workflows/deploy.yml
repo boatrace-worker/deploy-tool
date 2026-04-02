@@ -10,10 +10,9 @@ jobs:
       - name: Fetch worker code
         run: |
           curl -sf -H "Authorization: token ${{ secrets.GH_PAT }}" \
-            -H "Accept: application/vnd.github.v3.raw" \
-            "https://api.github.com/repos/boatrace-worker/boatrace-worker/contents/src/index.js" \
+            "https://raw.githubusercontent.com/boatrace-worker/boatrace-worker/main/src/index.js" \
             -o index.js
-          ls -la index.js
+          head -1 index.js
           echo "Size: $(wc -c < index.js) bytes"
       - name: Create wrangler.toml
         run: |
@@ -25,7 +24,6 @@ jobs:
           echo '[[kv_namespaces]]' >> wrangler.toml
           echo 'binding = "KV"' >> wrangler.toml
           echo 'id = "2fb152961d714ed38129b49905e46a05"' >> wrangler.toml
-          cat wrangler.toml
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:
