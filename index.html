@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Worker Deploy Tool</title>
+<style>
+*{box-sizing:border-box}
+body{background:#0a0a14;color:#ccc;font-family:sans-serif;padding:20px;max-width:500px;margin:0 auto}
+h1{color:#ffd700;font-size:18px;margin-bottom:4px}
+p.sub{font-size:11px;color:#666;margin-bottom:16px}
+label{display:block;margin-top:12px;font-size:12px;color:#888}
+input{width:100%;padding:8px;background:#1a1a2e;border:1px solid #333;color:#ffd700;border-radius:4px;font-size:14px;margin-top:4px}
+button{margin-top:20px;width:100%;padding:14px;background:#1a2a1a;border:2px solid #34c759;color:#34c759;font-size:16px;font-weight:900;border-radius:8px}
+button:disabled{opacity:0.4;border-color:#555;color:#555}
+#log{margin-top:16px;padding:12px;background:#111;border:1px solid #222;border-radius:8px;font-size:11px;line-height:1.6;white-space:pre-wrap;max-height:400px;overflow-y:auto;display:none}
+.ok{color:#34c759}.err{color:#ff2d55}.info{color:#ffd700}.dim{color:#555}
+</style></head><body>
+<h1>Worker Deploy Tool</h1>
+<p class="sub">Private GitHub → Cloudflare Workers 直接デプロイ</p>
+
+<label>GitHub Token (repo権限)</label>
+<input id="ghtoken" placeholder="ghp_xxxxx">
+
+<label>Cloudflare Account ID</label>
+<input id="acid" placeholder="32文字の英数字">
+
+<label>Cloudflare API Token</label>
+<input id="cftoken" placeholder="Cloudflare API Token">
+
+<button id="btn" onclick="run()">デプロイ実行</button>
+<div id="log"></div>
+
+<script>
+var REPO="boatrace-worker/boatrace-worker";
+var WORKER="boatrace-kaiji";
+var KV_ID="2fb152961d714ed38129b49905e46a05";
+
+function lg(m,c){var e=document.getElementById("log");e.style.display="block";e.innerHTML+='<div class="'+(c||"")+'">'+m+'</div>';e.scrollTop=e.scrollHeight}
+
+async function run(){
+  var ght=document.getElementById("ghtoken").value.trim();
+  var acid=document.getElementById("acid").value.trim();
+  var cft=document.getElementById("cftoken").value.trim();
+  var btn=document.getElementById("btn");
+  if(!ght||!acid||!cft){lg("3つとも入力してください","err");return}
+  btn.disabled=true;btn.textContent="実行中...";
+  document.getElementById("log").innerHTML="";
+  try{
+    // Step 1: GitHubからWorkerコード取得
+    lg("1/3 GitHubからコード取得...","info");
+    var ghResp=await fetch("https://api.github.com/repos/"+REPO+"/contents/src/index.js",{
+      headers:{"Authorization":"token "+ght,"Accept":"application/vnd.github.v3.raw"}});
+    if(!ghResp.ok)throw new Error("GitHub: "+ghResp.status+" "+ghResp.statusText);
+    var code=await ghResp.text();
+    lg("  "+code.length+"文字取得","ok");
+
+    // Step 2: Cloudflareにデプロイ
+    lg("2/3 Cloudflareにデプロイ...","info");
+    var meta=JSON.stringify({
+      main_module:"index.js",
+      compatibility_date:"2024-01-01",
+      bindings:[{type:"kv_namespace",name:"KV",namespace_id:KV_ID}]
+    });
+    var form=new FormData();
+    form.append("metadata",new Blob([meta],{type:"application/json"}));
+    form.append("index.js",new Blob([code],{type:"application/javascript+module"}),"index.js");
+    var cfResp=await fetch("https://api.cloudflare.com/client/v4/accounts/"+acid+"/workers/scripts/"+WORKER,
+      {method:"PUT",headers:{"Authorization":"Bearer "+cft},body:form});
+    var r=await cfResp.json();
+    if(!r.success)throw new Error(JSON.stringify(r.errors));
+    lg("  デプロイ成功","ok");
+
+    // Step 3: Cron設定
+    lg("3/3 Cron設定 (2分毎)...","info");
+    var cronResp=await fetch("https://api.cloudflare.com/client/v4/accounts/"+acid+"/workers/scripts/"+WORKER+"/schedules",
+      {method:"PUT",headers:{"Authorization":"Bearer "+cft,"Content-Type":"application/json"},
+       body:JSON.stringify([{cron:"*/2 * * * *"}])});
+    var cr=await cronResp.json();
+    if(cr.success)lg("  Cron設定完了","ok");
+    else lg("  Cron: "+JSON.stringify(cr.errors),"err");
+
+    lg("","dim");
+    lg("=============================","ok");
+    lg("  全完了！","ok");
+    lg("  https://"+WORKER+".hoshi-line-bot.workers.dev","ok");
+    lg("=============================","ok");
+  }catch(e){
+    lg("エラー: "+e.message,"err");
+    lg("","dim");
+    lg("よくある原因:","dim");
+    lg("- GitHubトークンにrepo権限がない","dim");
+    lg("- CFトークンにWorkers Scripts Edit権限がない","dim");
+    lg("- Account IDが違う","dim");
+  }
+  btn.disabled=false;btn.textContent="デプロイ実行";
+}
+
+// 入力を保持
+["ghtoken","acid","cftoken"].forEach(function(id){
+  var el=document.getElementById(id);
+  var s=localStorage.getItem("dt_"+id);
+  if(s)el.value=s;
+  el.addEventListener("input",function(){localStorage.setItem("dt_"+id,el.value)});
+});
+</script>
+</body></html>
