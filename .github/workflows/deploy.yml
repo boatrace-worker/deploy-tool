@@ -7,26 +7,26 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch worker code from private repo
+      - name: Fetch worker code
         run: |
-          curl -s -H "Authorization: token ${{ secrets.GH_PAT }}" \
+          curl -sf -H "Authorization: token ${{ secrets.GH_PAT }}" \
             -H "Accept: application/vnd.github.v3.raw" \
             "https://api.github.com/repos/boatrace-worker/boatrace-worker/contents/src/index.js" \
             -o index.js
-          echo "Downloaded $(wc -c < index.js) bytes"
-      - name: Setup wrangler.toml
+          ls -la index.js
+          echo "Size: $(wc -c < index.js) bytes"
+      - name: Create wrangler.toml
         run: |
-          cat > wrangler.toml << 'TOML'
-          name = "boatrace-kaiji"
-          main = "index.js"
-          compatibility_date = "2024-01-01"
-          [triggers]
-          crons = ["*/2 * * * *"]
-          [[kv_namespaces]]
-          binding = "KV"
-          id = "2fb152961d714ed38129b49905e46a05"
-          TOML
-      - name: Deploy to Cloudflare
+          echo 'name = "boatrace-kaiji"' > wrangler.toml
+          echo 'main = "index.js"' >> wrangler.toml
+          echo 'compatibility_date = "2024-01-01"' >> wrangler.toml
+          echo '[triggers]' >> wrangler.toml
+          echo 'crons = ["*/2 * * * *"]' >> wrangler.toml
+          echo '[[kv_namespaces]]' >> wrangler.toml
+          echo 'binding = "KV"' >> wrangler.toml
+          echo 'id = "2fb152961d714ed38129b49905e46a05"' >> wrangler.toml
+          cat wrangler.toml
+      - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
